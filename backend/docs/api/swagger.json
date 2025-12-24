@@ -1,0 +1,175 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "DeepSea 3.0 API",
+    "description": "API документация для системы DeepSea 3.0",
+    "version": "3.0.0"
+  },
+  "servers": [
+    { "url": "http://localhost:3000", "description": "Development server" },
+    { "url": "https://api.deepsea.example.com", "description": "Production server" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "messages": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "username": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string" },
+          "first_name": { "type": "string", "nullable": true },
+          "last_name": { "type": "string", "nullable": true },
+          "middle_name": { "type": "string", "nullable": true },
+          "department_id": { "type": "integer", "nullable": true },
+          "job_title_id": { "type": "integer", "nullable": true },
+          "is_active": { "type": "boolean" },
+          "is_verified": { "type": "boolean" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Вход в систему",
+        "description": "Аутентификация пользователя и получение токенов доступа",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string", "example": "admin" },
+                  "password": { "type": "string", "format": "password", "example": "password123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Успешный вход в систему",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": { "type": "string" },
+                    "refresh_token": { "type": "string" },
+                    "expires_at": { "type": "string", "format": "date-time" },
+                    "user": { "$ref": "#/components/schemas/User" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Ошибка валидации", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Неверные учетные данные" },
+          "403": { "description": "Пользователь деактивирован" },
+          "500": { "description": "Внутренняя ошибка сервера" }
+        }
+      }
+    },
+    "/api/create_users": {
+      "post": {
+        "tags": ["users"],
+        "summary": "Создать нового пользователя",
+        "description": "Создание нового пользователя в системе",
+        "security": [{ "bearerAuth": [] }],
+        "x-permissions": ["users.create"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "email", "phone", "password"],
+                "properties": {
+                  "username": { "type": "string", "maxLength": 100 },
+                  "email": { "type": "string", "format": "email", "maxLength": 255 },
+                  "phone": { "type": "string", "maxLength": 255 },
+                  "password": { "type": "string", "format": "password", "minLength": 6 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Пользователь успешно создан", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" }, "user": { "$ref": "#/components/schemas/User" } } } } } },
+          "400": { "description": "Ошибка валидации", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Конфликт - пользователь с такими данными уже существует" },
+          "401": { "description": "Authentication required" },
+          "403": { "description": "Forbidden - missing permission users.create" },
+          "500": { "description": "Внутренняя ошибка сервера" }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "tags": ["users"],
+        "summary": "Получить список пользователей",
+        "description": "Возвращает список пользователей с пагинацией. Требуется разрешение users.view.",
+        "security": [{ "bearerAuth": [] }],
+        "x-permissions": ["users.view"],
+        "parameters": [
+          { "in": "query", "name": "page", "schema": { "type": "integer" }, "description": "Номер страницы (по умолчанию 1)" },
+          { "in": "query", "name": "limit", "schema": { "type": "integer" }, "description": "Количество элементов на страницу (по умолчанию 25)" },
+          { "in": "query", "name": "search", "schema": { "type": "string" }, "description": "Поиск по username/email/phone (ILIKE)" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Список пользователей",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/User" } },
+                    "meta": { "type": "object", "properties": { "page": { "type": "integer" }, "limit": { "type": "integer" }, "total": { "type": "integer" } } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Authentication required" },
+          "403": { "description": "Forbidden - missing permission users.view" }
+        }
+      }
+    },
+    "/api/users/{id}": {
+      "get": {
+        "tags": ["users"],
+        "summary": "Получить пользователя по ID",
+        "description": "Возвращает пользователя по его идентификатору. Требуется разрешение users.view.",
+        "security": [{ "bearerAuth": [] }],
+        "x-permissions": ["users.view"],
+        "parameters": [
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" }, "description": "ID пользователя" }
+        ],
+        "responses": {
+          "200": { "description": "Пользователь найден", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "400": { "description": "Invalid user id" },
+          "401": { "description": "Authentication required" },
+          "403": { "description": "Forbidden - missing permission users.view" },
+          "404": { "description": "User not found" }
+        }
+      }
+    }
+  }
+}

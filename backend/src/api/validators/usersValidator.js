@@ -1,0 +1,119 @@
+/**
+ * Валидаторы для работы с пользователями
+ */
+
+/**
+ * Валидация данных для создания пользователя
+ */
+function validateCreateUser(req, res, next) {
+  const {
+    username,
+    email,
+    phone,
+    password,
+    first_name,
+    last_name,
+    middle_name,
+    department_id,
+    job_title_id,
+    is_active,
+    is_verified
+  } = req.body;
+
+  const errors = [];
+
+  // Обязательные поля
+  if (!username || typeof username !== 'string' || username.trim().length === 0) {
+    errors.push('Username is required');
+  } else if (username.length > 100) {
+    errors.push('Username must be 100 characters or less');
+  }
+
+  if (!email || typeof email !== 'string' || email.trim().length === 0) {
+    errors.push('Email is required');
+  } else {
+    // Простая валидация email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      errors.push('Invalid email format');
+    }
+    if (email.length > 255) {
+      errors.push('Email must be 255 characters or less');
+    }
+  }
+
+  if (!phone || typeof phone !== 'string' || phone.trim().length === 0) {
+    errors.push('Phone is required');
+  } else if (phone.length > 255) {
+    errors.push('Phone must be 255 characters or less');
+  }
+
+  if (!password || typeof password !== 'string' || password.length === 0) {
+    errors.push('Password is required');
+  } else if (password.length < 6) {
+    errors.push('Password must be at least 6 characters long');
+  }
+
+  // Опциональные поля
+  if (first_name !== undefined && first_name !== null) {
+    if (typeof first_name !== 'string') {
+      errors.push('First name must be a string');
+    } else if (first_name.length > 100) {
+      errors.push('First name must be 100 characters or less');
+    }
+  }
+
+  if (last_name !== undefined && last_name !== null) {
+    if (typeof last_name !== 'string') {
+      errors.push('Last name must be a string');
+    } else if (last_name.length > 100) {
+      errors.push('Last name must be 100 characters or less');
+    }
+  }
+
+  if (middle_name !== undefined && middle_name !== null) {
+    if (typeof middle_name !== 'string') {
+      errors.push('Middle name must be a string');
+    } else if (middle_name.length > 100) {
+      errors.push('Middle name must be 100 characters or less');
+    }
+  }
+
+  if (department_id !== undefined && department_id !== null) {
+    if (!Number.isInteger(Number(department_id)) || Number(department_id) < 1) {
+      errors.push('Department ID must be a positive integer');
+    }
+  }
+
+  if (job_title_id !== undefined && job_title_id !== null) {
+    if (!Number.isInteger(Number(job_title_id)) || Number(job_title_id) < 1) {
+      errors.push('Job title ID must be a positive integer');
+    }
+  }
+
+  if (is_active !== undefined && is_active !== null) {
+    if (typeof is_active !== 'boolean') {
+      errors.push('is_active must be a boolean');
+    }
+  }
+
+  if (is_verified !== undefined && is_verified !== null) {
+    if (typeof is_verified !== 'boolean') {
+      errors.push('is_verified must be a boolean');
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      error: 'Validation error',
+      messages: errors
+    });
+  }
+
+  next();
+}
+
+module.exports = {
+  validateCreateUser
+};
+

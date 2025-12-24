@@ -1,0 +1,216 @@
+openapi: 3.0.3
+info:
+  title: DeepSea 3.0 API
+  description: API документация для системы DeepSea 3.0
+  version: 3.0.0
+servers:
+- url: https://api.deepsea.example.com
+  description: Production server
+- url: http://localhost:8000
+  description: Development server
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        messages:
+          type: array
+          items:
+            type: string
+paths:
+  /api/auth/login:
+    post:
+      tags:
+      - auth
+      summary: Вход в систему
+      description: Аутентификация пользователя и получение токенов доступа
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: "admin"
+                password:
+                  type: string
+                  format: password
+                  example: "password123"
+      responses:
+        '200':
+          description: Успешный вход в систему
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT токен доступа
+                  refresh_token:
+                    type: string
+                    description: Токен для обновления access токена
+                  expires_at:
+                    type: string
+                    format: date-time
+                    description: Время истечения токена
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      username:
+                        type: string
+                      email:
+                        type: string
+                      first_name:
+                        type: string
+                      last_name:
+                        type: string
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Validation error"
+                  messages:
+                    type: array
+                    items:
+                      type: string
+                    example: ["Username is required", "Password is required"]
+        '401':
+          description: Неверные учетные данные
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Invalid credentials"
+        '403':
+          description: Пользователь деактивирован
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "User account is deactivated"
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Internal server error"
+
+  /api/create_users:
+    post:
+      tags:
+        - users
+      summary: Создать нового пользователя
+      description: Создание нового пользователя в системе
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - users.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - phone
+                - password
+              properties:
+                username:
+                  type: string
+                  maxLength: 100
+                  example: "john_doe"
+                  description: Уникальное имя пользователя
+                email:
+                  type: string
+                  format: email
+                  maxLength: 255
+                  example: "john.doe@example.com"
+                  description: Email адрес пользователя
+                phone:
+                  type: string
+                  maxLength: 255
+                  example: "+1234567890"
+                  description: Номер телефона пользователя
+                password:
+                  type: string
+                  format: password
+                  minLength: 6
+                  example: "password123"
+                  description: Пароль пользователя (минимум 6 символов)
+      responses:
+        '201':
+          description: Пользователь успешно создан
+        '400':
+          description: Ошибка валидации
+        '409':
+          description: Конфликт - пользователь с такими данными уже существует
+        '401':
+          description: Authentication required
+        '403':
+          description: Forbidden - missing permission users.create
+
+  /api/users:
+    get:
+      tags:
+        - users
+      summary: Получить список пользователей
+      description: Возвращает список пользователей с пагинацией. Требуется разрешение users.view.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - users.view
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+          description: Номер страницы (по умолчанию 1)
+        - in: query
+          name: limit
+          schema:
+            type: integer
+          description: Количество элементов на страницу (по умолчанию 25)
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Поиск по username/email/phone (ILIKE)
+      responses:
+        '200':
+          description: Список пользователей
+        '401':
+          description: Authentication required
+        '403':
+          description: Forbidden - missing permission users.view
