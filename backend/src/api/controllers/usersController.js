@@ -53,7 +53,38 @@ class UsersController {
       next(error);
     }
   }
+
+  /**
+   * Обновить пользователя (частично)
+   */
+  static async updateUser(req, res, next) {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const actor = req.user || null;
+      const fields = req.body || {};
+      const updated = await UsersService.updateUser(id, fields, actor);
+      res.status(200).json({ user: updated });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Удалить пользователя (soft-delete)
+   */
+  static async deleteUser(req, res, next) {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const actor = req.user || null;
+      await UsersService.deleteUser(id, actor);
+      res.status(200).json({ message: 'User deleted' });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = UsersController;
+
+
 

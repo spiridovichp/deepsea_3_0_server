@@ -4,6 +4,7 @@
 
 const { verifyAccessToken } = require('../../utils/jwt');
 const User = require('../../db/models/User');
+const Session = require('../../db/models/Session');
 const pool = require('../../db/connection');
 
 async function authMiddleware(req, res, next) {
@@ -40,29 +41,76 @@ async function authMiddleware(req, res, next) {
       throw err;
     }
 
-    // Подгружаем список кодов разрешений для пользователя
-    const permsQuery = `
-      SELECT DISTINCT p.code
-      FROM permissions p
-      JOIN role_permissions rp ON rp.permission_id = p.id
-      JOIN user_roles ur ON ur.role_id = rp.role_id
-      WHERE ur.user_id = $1
-    `;
+    // Проверим, есть ли активная сессия для данного access token
+    // Если сессия неактивна/не найдена — отклоняем запрос
+    try {
+      const session = await Session.findByToken(token);
+      if (!session) {
+        const err = new Error('Session is inactive or invalid');
+        err.statusCode = 401;
+        throw err;
+      }
 
-    const permsRes = await pool.query(permsQuery, [user.id]);
-    const permissions = permsRes.rows.map(r => r.code);
+      // Дополнительная проверка: совпадает ли user_id в сессии с payload.user
+      if (session.user_id !== user.id) {
+        const err = new Error('Session user mismatch');
+        err.statusCode = 401;
+        throw err;
+      }
+
+      // Проверим expires_at (если указано) и деактивируем при просрочке
+      if (session.expires_at) {
+        const exp = new Date(session.expires_at);
+        if (exp.getTime() <= Date.now()) {
+          // деактивируем сессию и отклоняем
+          try { await Session.deactivate(session.token); } catch (e) { /* ignore */ }
+          const err = new Error('Session expired');
+          err.statusCode = 401;
+          throw err;
+        }
+      }
+    } catch (e) {
+      // если было наше намеренное исключение — пробросим дальше
+      if (e.statusCode) throw e;
+      // иначе — лог и отказ
+      // eslint-disable-next-line no-console
+      console.warn('Session check failed for token:', e.message);
+      const err = new Error('Session validation failed');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    // Подгружаем список кодов разрешений для пользователя. Вынесено в модель/сервис.
+    let permissions = [];
+    try {
+      const PermissionModel = require('../../db/models/Permission');
+      const permQuery = `
+        SELECT DISTINCT p.code
+        FROM permissions p
+        JOIN role_permissions rp ON rp.permission_id = p.id
+        JOIN user_roles ur ON ur.role_id = rp.role_id
+        WHERE ur.user_id = $1
+      `;
+      // Используем pool напрямую здесь для совместимости с существующей структурой
+      const permsRes = await require('../../db/connection').query(permQuery, [user.id]);
+      permissions = permsRes.rows.map(r => r.code);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('Failed to load permissions for user', user.id, e.message);
+      permissions = [];
+    }
 
     // Попробуем получить текстовые наименования отдела и должности
     let department = null;
     let jobTitle = null;
     try {
       if (user.department_id) {
-        const depRes = await pool.query('SELECT name FROM department WHERE id = $1', [user.department_id]);
-        department = depRes.rows[0] ? depRes.rows[0].name : null;
+        const Department = require('../../db/models/Department');
+        department = await Department.findNameById(user.department_id);
       }
       if (user.job_title_id) {
-        const jtRes = await pool.query('SELECT name FROM job_title WHERE id = $1', [user.job_title_id]);
-        jobTitle = jtRes.rows[0] ? jtRes.rows[0].name : null;
+        const JobTitle = require('../../db/models/JobTitle');
+        jobTitle = await JobTitle.findNameById(user.job_title_id);
       }
     } catch (e) {
       // Не фатальная ошибка — логируем и продолжаем без текстовых значений

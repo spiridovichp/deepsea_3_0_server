@@ -1,0 +1,23 @@
+/**
+ * Модель для операций с разрешениями (permissions)
+ */
+const pool = require('../connection');
+
+class Permission {
+  /**
+   * Проверить наличие разрешения у пользователя (через роли)
+   */
+  static async hasPermissionForUser(userId, permissionCode) {
+    const query = `
+      SELECT 1 FROM user_roles ur
+      JOIN role_permissions rp ON ur.role_id = rp.role_id
+      JOIN permissions p ON rp.permission_id = p.id
+      WHERE ur.user_id = $1 AND p.code = $2
+      LIMIT 1
+    `;
+    const res = await pool.query(query, [userId, permissionCode]);
+    return res.rowCount > 0;
+  }
+}
+
+module.exports = Permission;

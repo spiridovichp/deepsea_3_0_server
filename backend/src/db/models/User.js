@@ -198,6 +198,74 @@ class User {
     
     return result.rows[0];
   }
+
+  /**
+   * Обновить существующего пользователя (частично). Возвращает обновлённую запись.
+   */
+  static async update(id, fields) {
+    const allowed = ['username','email','phone','first_name','last_name','middle_name','department_id','job_title_id','is_active','is_verified'];
+    const sets = [];
+    const params = [];
+    let idx = 1;
+    for (const key of allowed) {
+      if (Object.prototype.hasOwnProperty.call(fields, key)) {
+        sets.push(`${key} = $${idx}`);
+        params.push(fields[key]);
+        idx++;
+      }
+    }
+    if (sets.length === 0) return await User.findById(id);
+    params.push(id);
+    const query = `UPDATE users SET ${sets.join(', ')} , updated_at = CURRENT_TIMESTAMP WHERE id = $${idx} RETURNING id, username, email, phone, first_name, last_name, middle_name, department_id, job_title_id, is_active, is_verified, created_at, updated_at`;
+    const res = await pool.query(query, params);
+    return res.rows[0] || null;
+  }
+
+  /**
+   * Soft-delete user (set is_active = false)
+   */
+  static async softDelete(id) {
+    const query = `UPDATE users SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING id`;
+    const res = await pool.query(query, [id]);
+    return res.rowCount > 0;
+  }
+
+  /**
+   * Посчитать пользователей с опциональным поиском
+   */
+  static async countUsers(search) {
+    let where = '';
+    const params = [];
+    if (search) {
+      params.push(search, search, search);
+      where = `WHERE username ILIKE $1 OR email ILIKE $2 OR phone ILIKE $3`;
+    }
+    const query = `SELECT COUNT(*) AS total FROM users ${where}`;
+    const res = await pool.query(query, params);
+    return parseInt(res.rows[0].total, 10) || 0;
+  }
+
+  /**
+   * Вернуть список пользователей с пагинацией и поиском
+   */
+  static async listUsers({ search = null, limit = 25, offset = 0 } = {}) {
+    const params = [];
+    let where = '';
+    if (search) {
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      where = `WHERE username ILIKE $1 OR email ILIKE $2 OR phone ILIKE $3`;
+    }
+    params.push(limit, offset);
+    const query = `
+      SELECT id, username, email, phone, first_name, last_name, middle_name, department_id, job_title_id, is_active, is_verified, created_at, updated_at
+      FROM users
+      ${where}
+      ORDER BY id ASC
+      LIMIT $${params.length - 1} OFFSET $${params.length}
+    `;
+    const res = await pool.query(query, params);
+    return res.rows;
+  }
 }
 
 module.exports = User;

@@ -39,6 +39,26 @@
           "updated_at": { "type": "string", "format": "date-time" }
         }
       }
+      ,
+      "Department": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" }
+        }
+      }
+      ,
+      "JobTitle": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "is_active": { "type": "boolean" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      }
     }
   },
   "paths": {
@@ -219,24 +239,273 @@
         }
       }
     },
-    "/api/users/{id}": {
-      "get": {
-        "tags": ["users"],
-        "summary": "Получить пользователя по ID",
-        "description": "Возвращает пользователя по его идентификатору. Требуется разрешение users.view.",
-        "security": [{ "bearerAuth": [] }],
-        "x-permissions": ["users.view"],
-        "parameters": [
-          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" }, "description": "ID пользователя" }
-        ],
-        "responses": {
-          "200": { "description": "Пользователь найден", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
-          "400": { "description": "Invalid user id" },
-          "401": { "description": "Authentication required" },
-          "403": { "description": "Forbidden - missing permission users.view" },
-          "404": { "description": "User not found" }
+      "/api/departments": {
+        "get": {
+          "tags": ["departments"],
+          "summary": "Получить список отделов",
+          "description": "Возвращает список отделов. Требуется разрешение departments.view.",
+          "security": [{ "bearerAuth": [] }],
+          "x-permissions": ["departments.view"],
+          "responses": {
+            "200": {
+              "description": "Список отделов",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "data": { "type": "array", "items": { "$ref": "#/components/schemas/Department" } }
+                    }
+                  }
+                }
+              }
+            },
+            "401": { "description": "Authentication required" },
+            "403": { "description": "Forbidden - missing permission departments.view" }
+          }
+        },
+        "post": {
+          "tags": ["departments"],
+          "summary": "Создать отдел",
+          "description": "Создать новый отдел. Требуется разрешение departments.create.",
+          "security": [{ "bearerAuth": [] }],
+          "x-permissions": ["departments.create"],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["name"],
+                  "properties": {
+                    "name": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": { "description": "Отдел создан", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Department" } } } },
+            "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+            "401": { "description": "Authentication required" },
+            "403": { "description": "Forbidden - missing permission departments.create" }
+          }
+        }
+      },
+      "/api/users/{id}": {
+        "put": {
+          "tags": ["users"],
+          "summary": "Обновить пользователя",
+          "description": "Частичное обновление пользователя. Требуется разрешение users.update.",
+          "security": [{ "bearerAuth": [] }],
+          "x-permissions": ["users.update"],
+          "parameters": [
+            { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" }, "description": "ID пользователя" }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "username": { "type": "string" },
+                    "email": { "type": "string", "format": "email" },
+                    "phone": { "type": "string" },
+                    "first_name": { "type": "string" },
+                    "last_name": { "type": "string" },
+                    "middle_name": { "type": "string" },
+                    "department_id": { "type": "integer" },
+                    "job_title_id": { "type": "integer" },
+                    "is_active": { "type": "boolean" },
+                    "is_verified": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": { "description": "Пользователь обновлён", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+            "400": { "description": "Invalid user id or bad payload" },
+            "401": { "description": "Authentication required" },
+            "403": { "description": "Forbidden - missing permission users.update" },
+            "404": { "description": "User not found" }
+          }
+        },
+        "delete": {
+          "tags": ["users"],
+          "summary": "Удалить пользователя (soft-delete)",
+          "description": "Пометить пользователя как неактивного. Требуется разрешение users.delete.",
+          "security": [{ "bearerAuth": [] }],
+          "x-permissions": ["users.delete"],
+          "parameters": [
+            { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" }, "description": "ID пользователя" }
+          ],
+          "responses": {
+            "200": { "description": "User deleted", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" } } } } } },
+            "400": { "description": "Invalid user id" },
+            "401": { "description": "Authentication required" },
+            "403": { "description": "Forbidden - missing permission users.delete" },
+            "404": { "description": "User not found" }
+          }
         }
       }
-    }
+      ,
+      "/api/departments/{id}": {
+        "put": {
+          "tags": ["departments"],
+          "summary": "Обновление отдела",
+          "description": "Обновляет отдел по ID. Требуется разрешение departments.update.",
+          "security": [{ "bearerAuth": [] }],
+          "x-permissions": ["departments.update"],
+          "parameters": [
+            { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" }, "description": "ID отдела" }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "description": { "type": "string" },
+                    "manager_id": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": { "description": "Отдел обновлён", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Department" } } } },
+            "400": { "description": "Validation error" },
+            "401": { "description": "Authentication required" },
+            "403": { "description": "Forbidden - missing permission departments.update" },
+            "404": { "description": "Department not found" }
+          }
+        },
+        "delete": {
+          "tags": ["departments"],
+          "summary": "Удаление отдела (soft-delete)",
+          "description": "Пометить отдел как неактивный. Требуется разрешение departments.delete.",
+          "security": [{ "bearerAuth": [] }],
+          "x-permissions": ["departments.delete"],
+          "parameters": [
+            { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" }, "description": "ID отдела" }
+          ],
+          "responses": {
+            "200": { "description": "Department deleted", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" } } } } } },
+            "400": { "description": "Invalid department id" },
+            "401": { "description": "Authentication required" },
+            "403": { "description": "Forbidden - missing permission departments.delete" },
+            "404": { "description": "Department not found" }
+          }
+        }
+      }
+      ,
+      "/api/job-titles": {
+        "get": {
+          "tags": ["job-titles"],
+          "summary": "Список должностей",
+          "description": "Возвращает список должностей. Требуется разрешение job_titles.view.",
+          "security": [{ "bearerAuth": [] }],
+          "x-permissions": ["job_titles.view"],
+          "responses": {
+            "200": {
+              "description": "Список должностей",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "data": { "type": "array", "items": { "$ref": "#/components/schemas/JobTitle" } }
+                    }
+                  }
+                }
+              }
+            },
+            "401": { "description": "Authentication required" },
+            "403": { "description": "Forbidden - missing permission job_titles.view" }
+          }
+        },
+        "post": {
+          "tags": ["job-titles"],
+          "summary": "Создать должность",
+          "description": "Создать новую должность. Требуется разрешение job_titles.create.",
+          "security": [{ "bearerAuth": [] }],
+          "x-permissions": ["job_titles.create"],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["name"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "description": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": { "description": "Должность создана", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobTitle" } } } },
+            "400": { "description": "Validation error" },
+            "401": { "description": "Authentication required" },
+            "403": { "description": "Forbidden - missing permission job_titles.create" }
+          }
+        }
+      },
+      "/api/job-titles/{id}": {
+        "put": {
+          "tags": ["job-titles"],
+          "summary": "Обновление должности",
+          "description": "Обновление должности по ID. Требуется разрешение job_titles.update.",
+          "security": [{ "bearerAuth": [] }],
+          "x-permissions": ["job_titles.update"],
+          "parameters": [
+            { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" }, "description": "ID должности" }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "description": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": { "description": "Должность обновлена", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobTitle" } } } },
+            "400": { "description": "Validation error" },
+            "401": { "description": "Authentication required" },
+            "403": { "description": "Forbidden - missing permission job_titles.update" },
+            "404": { "description": "Job title not found" }
+          }
+        },
+        "delete": {
+          "tags": ["job-titles"],
+          "summary": "Удаление должности (soft-delete)",
+          "description": "Пометить должность как неактивную. Требуется разрешение job_titles.delete.",
+          "security": [{ "bearerAuth": [] }],
+          "x-permissions": ["job_titles.delete"],
+          "parameters": [
+            { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" }, "description": "ID должности" }
+          ],
+          "responses": {
+            "200": { "description": "Job title deleted", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" } } } } } },
+            "400": { "description": "Invalid id" },
+            "401": { "description": "Authentication required" },
+            "403": { "description": "Forbidden - missing permission job_titles.delete" },
+            "404": { "description": "Job title not found" }
+          }
+        }
+      }
   }
 }

@@ -35,31 +35,12 @@ class UsersService {
       throw err;
     }
 
-    // Если у объекта actor есть явный список permissions — используем его
-    if (actor.permissions && Array.isArray(actor.permissions)) {
-      if (!actor.permissions.includes(requiredPermission)) {
-        const err = new Error('Forbidden: missing permission users.create');
-        err.statusCode = 403;
-        throw err;
-      }
-    } else {
-      // Иначе проверим через таблицы RBAC: user_roles -> role_permissions -> permissions
-      const permQuery = `
-        SELECT 1 FROM user_roles ur
-        JOIN role_permissions rp ON ur.role_id = rp.role_id
-        JOIN permissions p ON rp.permission_id = p.id
-        WHERE ur.user_id = $1 AND p.code = $2
-        LIMIT 1
-      `;
-
-      const permRes = await pool.query(permQuery, [actor.id, requiredPermission]);
-      if (permRes.rowCount === 0) {
-        const err = new Error('Forbidden: missing permission users.create');
-        err.statusCode = 403;
-        throw err;
-      }
-
-
+    const { hasPermission } = require('./permissionService');
+    const allowed = await hasPermission(actor, requiredPermission);
+    if (!allowed) {
+      const err = new Error('Forbidden: missing permission users.create');
+      err.statusCode = 403;
+      throw err;
     }
 
     // Проверить уникальность username
@@ -134,26 +115,12 @@ class UsersService {
       throw err;
     }
 
-    if (actor.permissions && Array.isArray(actor.permissions)) {
-      if (!actor.permissions.includes(requiredPermission)) {
-        const err = new Error('Forbidden: missing permission users.view');
-        err.statusCode = 403;
-        throw err;
-      }
-    } else {
-      const permQuery = `
-        SELECT 1 FROM user_roles ur
-        JOIN role_permissions rp ON ur.role_id = rp.role_id
-        JOIN permissions p ON rp.permission_id = p.id
-        WHERE ur.user_id = $1 AND p.code = $2
-        LIMIT 1
-      `;
-      const permRes = await pool.query(permQuery, [actor.id, requiredPermission]);
-      if (permRes.rowCount === 0) {
-        const err = new Error('Forbidden: missing permission users.view');
-        err.statusCode = 403;
-        throw err;
-      }
+    const { hasPermission } = require('./permissionService');
+    const allowed = await hasPermission(actor, requiredPermission);
+    if (!allowed) {
+      const err = new Error('Forbidden: missing permission users.view');
+      err.statusCode = 403;
+      throw err;
     }
 
     if (!id || Number.isNaN(id) || id <= 0) {
@@ -200,26 +167,12 @@ class UsersService {
       throw err;
     }
 
-    if (actor.permissions && Array.isArray(actor.permissions)) {
-      if (!actor.permissions.includes(requiredPermission)) {
-        const err = new Error('Forbidden: missing permission users.view');
-        err.statusCode = 403;
-        throw err;
-      }
-    } else {
-      const permQuery = `
-        SELECT 1 FROM user_roles ur
-        JOIN role_permissions rp ON ur.role_id = rp.role_id
-        JOIN permissions p ON rp.permission_id = p.id
-        WHERE ur.user_id = $1 AND p.code = $2
-        LIMIT 1
-      `;
-      const permRes = await pool.query(permQuery, [actor.id, requiredPermission]);
-      if (permRes.rowCount === 0) {
-        const err = new Error('Forbidden: missing permission users.view');
-        err.statusCode = 403;
-        throw err;
-      }
+    const { hasPermission } = require('./permissionService');
+    const allowed = await hasPermission(actor, requiredPermission);
+    if (!allowed) {
+      const err = new Error('Forbidden: missing permission users.view');
+      err.statusCode = 403;
+      throw err;
     }
 
     // Pagination
@@ -237,25 +190,12 @@ class UsersService {
       where = `WHERE username ILIKE $${params.length - 2} OR email ILIKE $${params.length - 1} OR phone ILIKE $${params.length}`;
     }
 
-    // Total count
-    const countQuery = `SELECT COUNT(*) AS total FROM users ${where}`;
-    const countRes = await pool.query(countQuery, params.slice(0, params.length));
-    const total = parseInt(countRes.rows[0].total, 10) || 0;
-
-    // Data query
-    params.push(limit, offset);
-    const dataQuery = `
-      SELECT id, username, email, phone, first_name, last_name, middle_name, department_id, job_title_id, is_active, is_verified, created_at, updated_at
-      FROM users
-      ${where}
-      ORDER BY id ASC
-      LIMIT $${params.length - 1} OFFSET $${params.length}
-    `;
-
-    const dataRes = await pool.query(dataQuery, params);
+    // Delegate DB work to User model
+    const total = await User.countUsers(query.search ? query.search.trim() : null);
+    const data = await User.listUsers({ search: query.search ? query.search.trim() : null, limit, offset });
 
     return {
-      data: dataRes.rows,
+      data,
       meta: {
         page,
         limit,
@@ -266,4 +206,62 @@ class UsersService {
 }
 
 module.exports = UsersService;
+
+// Update existing user (partial update)
+UsersService.updateUser = async function (id, fields, actor) {
+  const requiredPermission = 'users.update';
+  if (!actor || !actor.id) {
+    const err = new Error('Authentication required'); err.statusCode = 401; throw err;
+  }
+  const { hasPermission } = require('./permissionService');
+  const allowed = await hasPermission(actor, requiredPermission);
+  if (!allowed) { const err = new Error('Forbidden: missing permission users.update'); err.statusCode = 403; throw err; }
+
+  if (!id || Number.isNaN(Number(id)) || Number(id) <= 0) {
+    const err = new Error('Invalid user id'); err.statusCode = 400; throw err;
+  }
+
+  // Prevent changing password via this endpoint
+  if (fields.password || fields.password_hash) {
+    const err = new Error('Password cannot be changed via this endpoint'); err.statusCode = 400; throw err;
+  }
+
+  // If updating username/email/phone, ensure uniqueness
+  if (fields.username) {
+    const existing = await User.findByUsername(fields.username);
+    if (existing && existing.id !== Number(id)) { const err = new Error('Username already exists'); err.statusCode = 409; throw err; }
+  }
+  if (fields.email) {
+    const existing = await User.findByEmail(fields.email);
+    if (existing && existing.id !== Number(id)) { const err = new Error('Email already exists'); err.statusCode = 409; throw err; }
+  }
+  if (fields.phone) {
+    const existing = await User.findByPhone(fields.phone);
+    if (existing && existing.id !== Number(id)) { const err = new Error('Phone already exists'); err.statusCode = 409; throw err; }
+  }
+
+  const updated = await User.update(Number(id), fields);
+  if (!updated) { const err = new Error('User not found'); err.statusCode = 404; throw err; }
+  return updated;
+};
+
+// Soft-delete user
+UsersService.deleteUser = async function (id, actor) {
+  const requiredPermission = 'users.delete';
+  if (!actor || !actor.id) {
+    const err = new Error('Authentication required'); err.statusCode = 401; throw err;
+  }
+  const { hasPermission } = require('./permissionService');
+  const allowed = await hasPermission(actor, requiredPermission);
+  if (!allowed) { const err = new Error('Forbidden: missing permission users.delete'); err.statusCode = 403; throw err; }
+
+  if (!id || Number.isNaN(Number(id)) || Number(id) <= 0) {
+    const err = new Error('Invalid user id'); err.statusCode = 400; throw err;
+  }
+
+  const ok = await User.softDelete(Number(id));
+  if (!ok) { const err = new Error('User not found'); err.statusCode = 404; throw err; }
+  return { success: true };
+};
+
 
